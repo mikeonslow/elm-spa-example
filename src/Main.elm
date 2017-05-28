@@ -26,6 +26,7 @@ import Data.Session as Session exposing (Session)
 import Html exposing (..)
 import Route exposing (Route)
 import Html
+import Bootstrap.Navbar as Navbar
 
 
 -- WARNING: this whole file will become unnecessary and go away in Elm 0.19,
@@ -62,10 +63,17 @@ type alias Model =
 
 init : Value -> Location -> ( Model, Cmd Msg )
 init val location =
-    setRoute (Route.fromLocation location)
-        { pageState = Loaded initialPage
-        , session = { user = decodeUserFromJson val }
-        }
+    let
+        ( navState, navCmd ) =
+            Navbar.initialState NavbarMsg
+
+        ( routeState, routeCmd ) =
+            setRoute (Route.fromLocation location)
+                { pageState = Loaded initialPage
+                , session = { user = decodeUserFromJson val, navbarState = navState }
+                }
+    in
+        ( routeState, Cmd.batch [ navCmd, routeCmd ] )
 
 
 decodeUserFromJson : Value -> Maybe User
@@ -99,52 +107,55 @@ viewPage : Session -> Bool -> Page -> Html Msg
 viewPage session isLoading page =
     let
         frame =
-            Page.frame isLoading session.user
+            Page.frame session NavbarMsg isLoading
     in
         case page of
             NotFound ->
                 NotFound.view session
                     |> frame Page.Other
+                    |> Html.map mapPageMsg
 
             Blank ->
                 -- This is for the very intiial page load, while we are loading
                 -- data via HTTP. We could also render a spinner here.
                 Html.text ""
                     |> frame Page.Other
+                    |> Html.map mapPageMsg
 
             Errored subModel ->
                 Errored.view session subModel
                     |> frame Page.Other
+                    |> Html.map mapPageMsg
 
             Settings subModel ->
                 Settings.view session subModel
                     |> frame Page.Other
-                    |> Html.map SettingsMsg
+                    |> Html.map (viewPageMapper SettingsMsg)
 
             Home subModel ->
                 Home.view session subModel
                     |> frame Page.Home
-                    |> Html.map HomeMsg
+                    |> Html.map (viewPageMapper HomeMsg)
 
             Login subModel ->
                 Login.view session subModel
                     |> frame Page.Other
-                    |> Html.map LoginMsg
+                    |> Html.map (viewPageMapper LoginMsg)
 
             Register subModel ->
                 Register.view session subModel
                     |> frame Page.Other
-                    |> Html.map RegisterMsg
+                    |> Html.map (viewPageMapper RegisterMsg)
 
             Profile username subModel ->
                 Profile.view session subModel
                     |> frame (Page.Profile username)
-                    |> Html.map ProfileMsg
+                    |> Html.map (viewPageMapper ProfileMsg)
 
             Article subModel ->
                 Article.view session subModel
                     |> frame Page.Other
-                    |> Html.map ArticleMsg
+                    |> Html.map (viewPageMapper ArticleMsg)
 
             Editor maybeSlug subModel ->
                 let
@@ -156,7 +167,35 @@ viewPage session isLoading page =
                 in
                     Editor.view subModel
                         |> frame framePage
-                        |> Html.map EditorMsg
+                        |> Html.map (viewPageMapper EditorMsg)
+
+
+{-| Map a Page Msg to the appropriate top level Msg.
+
+If it is a content msg, then map it to the right Msg for the page.
+If it is a navbar msg, then just forward the message.
+
+-}
+viewPageMapper : (contentState -> Msg) -> Page.Msg contentState Msg -> Msg
+viewPageMapper tagger msg =
+    case msg of
+        Page.Content subMsg ->
+            tagger subMsg
+
+        Page.Navbar navbarMsg ->
+            navbarMsg
+
+
+{-| Forwards submessages provided by the views. Useful for pages without state but can still update the navbar.
+-}
+mapPageMsg : Page.Msg Msg Msg -> Msg
+mapPageMsg msg =
+    case msg of
+        Page.Content msg ->
+            msg
+
+        Page.Navbar navbarMsg ->
+            navbarMsg
 
 
 
@@ -241,6 +280,7 @@ type Msg
     | ProfileMsg Profile.Msg
     | ArticleMsg Article.Msg
     | EditorMsg Editor.Msg
+    | NavbarMsg Navbar.State
 
 
 setRoute : Maybe Route -> Model -> ( Model, Cmd Msg )
@@ -395,8 +435,11 @@ updatePage page msg model =
                                 let
                                     session =
                                         model.session
+
+                                    newSession =
+                                        { session | user = Just user }
                                 in
-                                    { model | session = { user = Just user } }
+                                    { model | session = newSession }
                 in
                     { newModel | pageState = Loaded (Settings pageModel) }
                         => Cmd.map SettingsMsg cmd
@@ -415,8 +458,11 @@ updatePage page msg model =
                                 let
                                     session =
                                         model.session
+
+                                    newSession =
+                                        { session | user = Just user }
                                 in
-                                    { model | session = { user = Just user } }
+                                    { model | session = newSession }
                 in
                     { newModel | pageState = Loaded (Login pageModel) }
                         => Cmd.map LoginMsg cmd
@@ -435,8 +481,11 @@ updatePage page msg model =
                                 let
                                     session =
                                         model.session
+
+                                    newSession =
+                                        { session | user = Just user }
                                 in
-                                    { model | session = { user = Just user } }
+                                    { model | session = newSession }
                 in
                     { newModel | pageState = Loaded (Register pageModel) }
                         => Cmd.map RegisterMsg cmd

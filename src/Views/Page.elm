@@ -1,4 +1,4 @@
-module Views.Page exposing (frame, ActivePage(..), bodyId)
+module Views.Page exposing (frame, ActivePage(..), bodyId, Msg(..))
 
 {-| The frame around a typical page - that is, the header and footer.
 -}
@@ -10,10 +10,12 @@ import Html.Attributes exposing (..)
 import Route exposing (Route)
 import Data.User as User exposing (User, Username)
 import Data.UserPhoto as UserPhoto exposing (UserPhoto)
+import Data.Session as Session exposing (Session)
 import Html
 import Html.Lazy exposing (lazy2)
 import Views.Spinner exposing (spinner)
 import Util exposing ((=>))
+import Bootstrap.Navbar as Navbar
 
 
 {-| Determines which navbar link (if any) will be rendered as active.
@@ -33,6 +35,13 @@ type ActivePage
     | NewArticle
 
 
+{-| A page can return either an message directed to the subpage content or to the global navbar
+-}
+type Msg contentMsg navMsg
+    = Content contentMsg
+    | Navbar navMsg
+
+
 {-| Take a page's Html and frame it with a header and footer.
 
 The caller provides the current user, so we can display in either
@@ -42,13 +51,20 @@ isLoading is for determining whether we should show a loading spinner
 in the header. (This comes up during slow page transitions.)
 
 -}
-frame : Bool -> Maybe User -> ActivePage -> Html msg -> Html msg
-frame isLoading user page content =
+frame : Session -> (Navbar.State -> navMsg) -> Bool -> ActivePage -> Html contentMsg -> Html (Msg contentMsg navMsg)
+frame session navTagger isLoading page content =
     div [ class "page-frame" ]
-        [ viewHeader page user isLoading
-        , content
-        , viewFooter
+        [ Html.map Navbar (navbarTop session navTagger)
+        , Html.map Content content
+        , Html.map Content viewFooter
         ]
+
+
+navbarTop : Session -> (Navbar.State -> msg) -> Html msg
+navbarTop session tagger =
+    Navbar.config tagger
+        |> Navbar.brand [ href "#" ] [ text "My Brand!" ]
+        |> Navbar.view session.navbarState
 
 
 viewHeader : ActivePage -> Maybe User -> Bool -> Html msg
