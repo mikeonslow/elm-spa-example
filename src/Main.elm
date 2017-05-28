@@ -26,6 +26,8 @@ import Data.Session as Session exposing (Session)
 import Html exposing (..)
 import Route exposing (Route)
 import Html
+import Html.Attributes
+import Bootstrap.Navbar as Navbar
 
 
 -- WARNING: this whole file will become unnecessary and go away in Elm 0.19,
@@ -62,10 +64,17 @@ type alias Model =
 
 init : Value -> Location -> ( Model, Cmd Msg )
 init val location =
-    setRoute (Route.fromLocation location)
-        { pageState = Loaded initialPage
-        , session = { user = decodeUserFromJson val }
-        }
+    let
+        ( navState, navCmd ) =
+            Navbar.initialState NavbarMsg
+
+        ( routeState, routeCmd ) =
+            setRoute (Route.fromLocation location)
+                { pageState = Loaded initialPage
+                , session = { user = decodeUserFromJson val, navbarState = navState }
+                }
+    in
+        ( routeState, Cmd.batch [ navCmd, routeCmd ] )
 
 
 decodeUserFromJson : Value -> Maybe User
@@ -95,68 +104,86 @@ view model =
             viewPage model.session True page
 
 
+navbarPage : Session -> Html Msg -> Html Msg
+navbarPage session content =
+    div [ Html.Attributes.class "page-frame" ]
+        [ navbar session
+        , content
+        ]
+
+
+navbar : Session -> Html Msg
+navbar session =
+    Navbar.config NavbarMsg
+        |> Navbar.brand [ Html.Attributes.href "#" ] [ text "My Brand!" ]
+        |> Navbar.view session.navbarState
+
+
 viewPage : Session -> Bool -> Page -> Html Msg
 viewPage session isLoading page =
     let
         frame =
             Page.frame isLoading session.user
+
+        content =
+            case page of
+                NotFound ->
+                    NotFound.view session
+                        |> frame Page.Other
+
+                Blank ->
+                    -- This is for the very intiial page load, while we are loading
+                    -- data via HTTP. We could also render a spinner here.
+                    Html.text ""
+                        |> frame Page.Other
+
+                Errored subModel ->
+                    Errored.view session subModel
+                        |> frame Page.Other
+
+                Settings subModel ->
+                    Settings.view session subModel
+                        |> frame Page.Other
+                        |> Html.map SettingsMsg
+
+                Home subModel ->
+                    Home.view session subModel
+                        |> frame Page.Home
+                        |> Html.map HomeMsg
+
+                Login subModel ->
+                    Login.view session subModel
+                        |> frame Page.Other
+                        |> Html.map LoginMsg
+
+                Register subModel ->
+                    Register.view session subModel
+                        |> frame Page.Other
+                        |> Html.map RegisterMsg
+
+                Profile username subModel ->
+                    Profile.view session subModel
+                        |> frame (Page.Profile username)
+                        |> Html.map ProfileMsg
+
+                Article subModel ->
+                    Article.view session subModel
+                        |> frame Page.Other
+                        |> Html.map ArticleMsg
+
+                Editor maybeSlug subModel ->
+                    let
+                        framePage =
+                            if maybeSlug == Nothing then
+                                Page.NewArticle
+                            else
+                                Page.Other
+                    in
+                        Editor.view subModel
+                            |> frame framePage
+                            |> Html.map EditorMsg
     in
-        case page of
-            NotFound ->
-                NotFound.view session
-                    |> frame Page.Other
-
-            Blank ->
-                -- This is for the very intiial page load, while we are loading
-                -- data via HTTP. We could also render a spinner here.
-                Html.text ""
-                    |> frame Page.Other
-
-            Errored subModel ->
-                Errored.view session subModel
-                    |> frame Page.Other
-
-            Settings subModel ->
-                Settings.view session subModel
-                    |> frame Page.Other
-                    |> Html.map SettingsMsg
-
-            Home subModel ->
-                Home.view session subModel
-                    |> frame Page.Home
-                    |> Html.map HomeMsg
-
-            Login subModel ->
-                Login.view session subModel
-                    |> frame Page.Other
-                    |> Html.map LoginMsg
-
-            Register subModel ->
-                Register.view session subModel
-                    |> frame Page.Other
-                    |> Html.map RegisterMsg
-
-            Profile username subModel ->
-                Profile.view session subModel
-                    |> frame (Page.Profile username)
-                    |> Html.map ProfileMsg
-
-            Article subModel ->
-                Article.view session subModel
-                    |> frame Page.Other
-                    |> Html.map ArticleMsg
-
-            Editor maybeSlug subModel ->
-                let
-                    framePage =
-                        if maybeSlug == Nothing then
-                            Page.NewArticle
-                        else
-                            Page.Other
-                in
-                    Editor.view subModel
-                        |> frame framePage
-                        |> Html.map EditorMsg
+        navbarPage session content
 
 
 
@@ -241,6 +268,7 @@ type Msg
     | ProfileMsg Profile.Msg
     | ArticleMsg Article.Msg
     | EditorMsg Editor.Msg
+    | NavbarMsg Navbar.State
 
 
 setRoute : Maybe Route -> Model -> ( Model, Cmd Msg )
@@ -396,7 +424,7 @@ updatePage page msg model =
                                     session =
                                         model.session
                                 in
-                                    { model | session = { user = Just user } }
+                                    { model | session = { session | user = Just user } }
                 in
                     { newModel | pageState = Loaded (Settings pageModel) }
                         => Cmd.map SettingsMsg cmd
@@ -416,7 +444,7 @@ updatePage page msg model =
                                     session =
                                         model.session
                                 in
-                                    { model | session = { user = Just user } }
+                                    { model | session = { session | user = Just user } }
                 in
                     { newModel | pageState = Loaded (Login pageModel) }
                         => Cmd.map LoginMsg cmd
@@ -436,7 +464,7 @@ updatePage page msg model =
                                     session =
                                         model.session
                                 in
-                                    { model | session = { user = Just user } }
+                                    { model | session = { session | user = Just user } }
                 in
                     { newModel | pageState = Loaded (Register pageModel) }
                         => Cmd.map RegisterMsg cmd

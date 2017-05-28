@@ -3,10 +3,13 @@ module Data.Session exposing (Session, attempt)
 import Data.User as User exposing (User)
 import Data.AuthToken exposing (AuthToken)
 import Util exposing ((=>))
+import Bootstrap.Navbar
 
 
 type alias Session =
-    { user : Maybe User }
+    { user : Maybe User
+    , navbarState : Bootstrap.Navbar.State
+    }
 
 
 attempt : String -> (AuthToken -> Cmd msg) -> Session -> ( List String, Cmd msg )
